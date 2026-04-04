@@ -1,10 +1,10 @@
 import asyncio
 import json
 import os
-from vkbottle.bot import Bot, Message
+from vkbottle.bot import Bot, MessageBOT_TOKEN = os.environ.get("VK_TOKEN")
 
-BOT_TOKEN = "YOUR_TOKEN"
-ADMIN_ID = 123456789  # ID пользователя @kalashnikov3002
+
+ADMIN_ID = 1076312001  # ID пользователя @kalashnikov3002
 DATA_FILE = "broadcast_data.json"
 
 def load_data():
