@@ -11,7 +11,7 @@ app = Flask(__name__)
 VK_TOKEN = os.environ.get("VK_TOKEN")
 ADMIN_ID = 1076312001
 GROUP_ID = 237327488
-CONFIRMATION_CODE = "e0b370c6"  # твой код подтверждения
+CONFIRMATION_CODE = "0c9c7a75"  # твой код подтверждения
 # =====================
 
 DATA_FILE = "broadcast_data.json"
@@ -61,9 +61,9 @@ thread.start()
 def webhook():
     data = request.get_json()
     
-    # ГЛАВНОЕ: возвращаем Response(content=..., media_type="text/plain")
+    # Возвращаем чистую строку без кавычек
     if data.get('type') == 'confirmation':
-        return Response(content=CONFIRMATION_CODE, media_type="text/plain")
+        return Response(CONFIRMATION_CODE, status=200, mimetype='text/plain')
     
     if data.get('type') == 'message_new':
         msg = data['object']['message']
@@ -71,6 +71,7 @@ def webhook():
         text = msg.get('text', '')
         peer_id = msg.get('peer_id')
         
+        # Команда .текст
         if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.текст '):
             new_text = text[7:]
             bot_data['promo_text'] = new_text
@@ -78,6 +79,7 @@ def webhook():
             send_message(peer_id, f"✅ Текст обновлен: {new_text}")
             return 'ok'
         
+        # Команда .чаты
         if user_id == ADMIN_ID and peer_id == user_id and text == '.чаты':
             if bot_data['chats']:
                 chats_list = "\n".join([f"- {c}" for c in bot_data['chats']])
@@ -86,6 +88,7 @@ def webhook():
                 send_message(peer_id, "📭 Чатов нет")
             return 'ok'
         
+        # Команда .удалить
         if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.удалить '):
             try:
                 chat_id = int(text[9:])
