@@ -83,6 +83,8 @@ thread.start()
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    global bot_data
+    bot_data = load_data()
     data = request.get_json()
     
     if data.get('type') == 'confirmation':
