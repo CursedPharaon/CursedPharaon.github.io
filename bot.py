@@ -7,12 +7,12 @@ from threading import Thread
 
 app = Flask(__name__)
 
-# ===== НАСТРОЙКИ (ТВОИ ДАННЫЕ) =====
+# ===== НАСТРОЙКИ =====
 VK_TOKEN = os.environ.get("VK_TOKEN")
 ADMIN_ID = 1076312001
 GROUP_ID = 237327488
-CONFIRMATION_CODE = "e0b370c6"  # Твой код подтверждения из VK
-# ==================================
+CONFIRMATION_CODE = "e0b370c6"  # твой код подтверждения
+# =====================
 
 DATA_FILE = "broadcast_data.json"
 
@@ -45,8 +45,7 @@ bot_data = load_data()
 # ===== РАССЫЛКА КАЖДЫЕ 3 МИНУТЫ =====
 def broadcast_loop():
     while True:
-        time.sleep(180)  # 3 минуты
-        
+        time.sleep(180)
         if bot_data["chats"] and bot_data["promo_text"]:
             print(f"📤 Рассылка в {len(bot_data['chats'])} чатов")
             for chat_id in bot_data["chats"]:
@@ -62,18 +61,16 @@ thread.start()
 def webhook():
     data = request.get_json()
     
-    # Код подтверждения
+    # ГЛАВНОЕ: возвращаем Response(content=..., media_type="text/plain")
     if data.get('type') == 'confirmation':
         return Response(content=CONFIRMATION_CODE, media_type="text/plain")
     
-    # Обработка сообщений
     if data.get('type') == 'message_new':
         msg = data['object']['message']
         user_id = msg.get('from_id')
         text = msg.get('text', '')
         peer_id = msg.get('peer_id')
         
-        # Команда .текст (только админ в ЛС)
         if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.текст '):
             new_text = text[7:]
             bot_data['promo_text'] = new_text
@@ -81,7 +78,6 @@ def webhook():
             send_message(peer_id, f"✅ Текст обновлен: {new_text}")
             return 'ok'
         
-        # Команда .чаты
         if user_id == ADMIN_ID and peer_id == user_id and text == '.чаты':
             if bot_data['chats']:
                 chats_list = "\n".join([f"- {c}" for c in bot_data['chats']])
@@ -90,7 +86,6 @@ def webhook():
                 send_message(peer_id, "📭 Чатов нет")
             return 'ok'
         
-        # Команда .удалить
         if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.удалить '):
             try:
                 chat_id = int(text[9:])
@@ -104,7 +99,7 @@ def webhook():
                 send_message(peer_id, "❌ Укажите ID")
             return 'ok'
         
-        # Добавление чата (пригласили бота)
+        # Добавление чата при приглашении бота
         if 'action' in msg and msg['action'].get('type') == 'chat_invite_user':
             invited_id = msg['action'].get('member_id')
             if invited_id == -GROUP_ID:
