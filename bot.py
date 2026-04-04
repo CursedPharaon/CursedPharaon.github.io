@@ -61,7 +61,7 @@ thread.start()
 def webhook():
     data = request.get_json()
     
-    # Возвращаем чистую строку без кавычек
+    # ⚠️ ЭТО САМОЕ ВАЖНОЕ — возвращаем чистую строку без кавычек
     if data.get('type') == 'confirmation':
         return Response(CONFIRMATION_CODE, status=200, mimetype='text/plain')
     
