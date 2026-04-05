@@ -2,7 +2,6 @@ import os
 import json
 import time
 import requests
-from flask import Response
 from flask import Flask, request, Response
 from threading import Thread
 
@@ -17,13 +16,9 @@ CONFIRMATION_CODE = "0c9c7a75"
 
 DATA_FILE = "broadcast_data.json"
 
-def log(msg):
-    """Функция для логирования в консоль Render"""
-    print(f"[LOG] {msg}")
-
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"chats": [], "promo_text": "Привет! Это тестовая рассылка."}
+        return {"chats": [], "promo_text1": "Текст рассылки №1", "promo_text2": "Текст рассылки №2"}
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -35,60 +30,44 @@ def send_message(peer_id, text):
     url = "https://api.vk.com/method/messages.send"
     params = {
         "access_token": VK_TOKEN,
-        "v": "5.199",
+        "v": "5.131",
         "peer_id": peer_id,
         "message": text,
         "random_id": 0
     }
     try:
-        response = requests.post(url, params=params)
-        log(f"Отправлено сообщение в {peer_id}: {text[:50]}...")
-        return response.json()
+        requests.post(url, params=params)
     except Exception as e:
-        log(f"Ошибка отправки: {e}")
-        return None
-
-def check_subscription(user_id):
-    url = "https://api.vk.com/method/groups.isMember"
-    params = {
-        "access_token": VK_TOKEN,
-        "v": "5.199",
-        "group_id": GROUP_ID,
-        "user_id": user_id
-    }
-    try:
-        response = requests.get(url, params=params)
-        data = response.json()
-        is_member = data.get("response", 0) == 1
-        log(f"Проверка подписки для {user_id}: {is_member}")
-        return is_member
-    except Exception as e:
-        log(f"Ошибка проверки подписки: {e}")
-        return False
+        print(f"Ошибка отправки: {e}")
 
 bot_data = load_data()
 
+# ===== РАССЫЛКА ДВУХ ТЕКСТОВ КАЖДЫЕ 3 МИНУТЫ =====
 def broadcast_loop():
     while True:
-        time.sleep(180)
-        if bot_data["chats"] and bot_data["promo_text"]:
-            log(f"📤 Рассылка в {len(bot_data['chats'])} чатов: {bot_data['promo_text']}")
+        time.sleep(180)  # 3 минуты
+        if bot_data["chats"]:
             for chat_id in bot_data["chats"]:
-                send_message(chat_id, bot_data["promo_text"])
-                time.sleep(1)
+                # Отправляем первый текст
+                if bot_data["promo_text1"]:
+                    send_message(chat_id, bot_data["promo_text1"])
+                    time.sleep(1)  # пауза между сообщениями
+                # Отправляем второй текст
+                if bot_data["promo_text2"]:
+                    send_message(chat_id, bot_data["promo_text2"])
+                    time.sleep(1)
+            print(f"📤 Рассылка выполнена в {len(bot_data['chats'])} чатов")
 
 thread = Thread(target=broadcast_loop)
 thread.daemon = True
 thread.start()
+# =================================================
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    global bot_data
-    bot_data = load_data()
     data = request.get_json()
     
     if data.get('type') == 'confirmation':
-        log("Получен запрос подтверждения")
         return Response(CONFIRMATION_CODE, status=200, mimetype='text/plain')
     
     if data.get('type') == 'message_new':
@@ -97,31 +76,24 @@ def webhook():
         text = msg.get('text', '')
         peer_id = msg.get('peer_id')
         
-        log(f"Новое сообщение от {user_id}, peer_id={peer_id}, текст: {text}")
-        
-        # Проверка подписки (для всех, кроме администратора)
-        if user_id != ADMIN_ID:
-            log(f"Пользователь {user_id} не админ, проверяем подписку")
-            if not check_subscription(user_id):
-                send_message(peer_id, "❌ Для использования бота нужно быть подписчиком канала!")
-                log(f"Пользователь {user_id} не подписан, отправлено предупреждение")
-                return 'ok'
-            log(f"Пользователь {user_id} подписан")
-        else:
-            log(f"Пользователь {user_id} админ, пропускаем проверку")
-        
-        # Команда .текст (только админ в ЛС)
-        if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.текст '):
-            new_text = text[7:]
-            bot_data['promo_text'] = new_text
+        # Команда .текст1 (только админ в ЛС)
+        if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.текст1 '):
+            new_text = text[8:]  # убираем ".текст1 "
+            bot_data['promo_text1'] = new_text
             save_data(bot_data)
-            send_message(peer_id, f"✅ Текст обновлен: {new_text}")
-            log(f"Текст обновлен: {new_text}")
+            send_message(peer_id, f"✅ Текст №1 обновлен:\n{new_text}")
+            return 'ok'
+        
+        # Команда .текст2 (только админ в ЛС)
+        if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.текст2 '):
+            new_text = text[8:]  # убираем ".текст2 "
+            bot_data['promo_text2'] = new_text
+            save_data(bot_data)
+            send_message(peer_id, f"✅ Текст №2 обновлен:\n{new_text}")
             return 'ok'
         
         # Команда .чаты
         if user_id == ADMIN_ID and peer_id == user_id and text == '.чаты':
-            log("Выполняется команда .чаты")
             if bot_data['chats']:
                 chats_list = "\n".join([f"- {c}" for c in bot_data['chats']])
                 send_message(peer_id, f"📋 Чаты:\n{chats_list}\nВсего: {len(bot_data['chats'])}")
@@ -131,7 +103,6 @@ def webhook():
         
         # Команда .удалить
         if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.удалить '):
-            log("Выполняется команда .удалить")
             try:
                 chat_id = int(text[9:])
                 if chat_id in bot_data['chats']:
@@ -147,13 +118,11 @@ def webhook():
         # Добавление чата при приглашении бота
         if 'action' in msg and msg['action'].get('type') == 'chat_invite_user':
             invited_id = msg['action'].get('member_id')
-            log(f"Приглашение бота. invited_id={invited_id}, GROUP_ID={-GROUP_ID}")
             if invited_id == -GROUP_ID:
                 if peer_id not in bot_data['chats']:
                     bot_data['chats'].append(peer_id)
                     save_data(bot_data)
-                    send_message(peer_id, "✅ Чат добавлен в рассылку!\nСообщения будут приходить каждые 3 минуты.")
-                    log(f"Чат {peer_id} добавлен в рассылку")
+                    send_message(peer_id, "✅ Чат добавлен в рассылку!\nСообщения будут приходить каждые 3 минуты (2 сообщения)")
             return 'ok'
     
     return 'ok'
