@@ -7,25 +7,33 @@ from threading import Thread
 
 app = Flask(__name__)
 
-# ===== НАСТРОЙКИ =====
+# ===== НАСТРОЙКИ (ЗАМЕНИ НА СВОИ) =====
 VK_TOKEN = os.environ.get("VK_TOKEN")
 ADMIN_ID = 1076312001
 GROUP_ID = 237327488
 CONFIRMATION_CODE = "0c9c7a75"
-# =====================
+# ======================================
 
 DATA_FILE = "broadcast_data.json"
 
+# Загрузка данных из файла
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"chats": [], "promo_text1": "Текст рассылки №1", "promo_text2": "Текст рассылки №2"}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        default_data = {"chats": [], "promo_text": "Привет! Это тестовая рассылка."}
+        save_data(default_data)
+        return default_data
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {"chats": [], "promo_text": "Привет! Это тестовая рассылка."}
 
+# Сохранение данных в файл
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+# Отправка сообщения
 def send_message(peer_id, text):
     url = "https://api.vk.com/method/messages.send"
     params = {
@@ -37,92 +45,90 @@ def send_message(peer_id, text):
     }
     try:
         requests.post(url, params=params)
+        return True
     except Exception as e:
         print(f"Ошибка отправки: {e}")
+        return False
 
-bot_data = load_data()
-
-# ===== РАССЫЛКА ДВУХ ТЕКСТОВ КАЖДЫЕ 3 МИНУТЫ =====
+# ===== РАССЫЛКА КАЖДЫЕ 3 МИНУТЫ =====
 def broadcast_loop():
     while True:
         time.sleep(180)  # 3 минуты
-        if bot_data["chats"]:
+        
+        bot_data = load_data()
+        
+        if bot_data.get("chats") and len(bot_data["chats"]) > 0:
+            print(f"📤 Рассылка в {len(bot_data['chats'])} чатов")
+            print(f"   Текст: {bot_data['promo_text']}")
+            
             for chat_id in bot_data["chats"]:
-                # Отправляем первый текст
-                if bot_data["promo_text1"]:
-                    send_message(chat_id, bot_data["promo_text1"])
-                    time.sleep(1)  # пауза между сообщениями
-                # Отправляем второй текст
-                if bot_data["promo_text2"]:
-                    send_message(chat_id, bot_data["promo_text2"])
-                    time.sleep(1)
-            print(f"📤 Рассылка выполнена в {len(bot_data['chats'])} чатов")
+                send_message(chat_id, bot_data["promo_text"])
+                time.sleep(1)
 
-thread = Thread(target=broadcast_loop)
-thread.daemon = True
-thread.start()
-# =================================================
+broadcast_thread = Thread(target=broadcast_loop)
+broadcast_thread.daemon = True
+broadcast_thread.start()
+# ===================================
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    bot_data = load_data()
     data = request.get_json()
     
+    # Подтверждение сервера
     if data.get('type') == 'confirmation':
         return Response(CONFIRMATION_CODE, status=200, mimetype='text/plain')
     
+    # Обработка сообщений
     if data.get('type') == 'message_new':
         msg = data['object']['message']
         user_id = msg.get('from_id')
         text = msg.get('text', '')
         peer_id = msg.get('peer_id')
         
-        # Команда .текст1 (только админ в ЛС)
-        if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.текст1 '):
-            new_text = text[8:]  # убираем ".текст1 "
-            bot_data['promo_text1'] = new_text
+        # Команда .текст (только админ в ЛС)
+        if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.текст '):
+            new_text = text[7:]  # убираем ".текст "
+            bot_data['promo_text'] = new_text
             save_data(bot_data)
-            send_message(peer_id, f"✅ Текст №1 обновлен:\n{new_text}")
+            send_message(peer_id, f"✅ Текст рассылки обновлен!\n\nНовый текст: {new_text}")
+            print(f"📝 Текст обновлен: {new_text}")
             return 'ok'
         
-        # Команда .текст2 (только админ в ЛС)
-        if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.текст2 '):
-            new_text = text[8:]  # убираем ".текст2 "
-            bot_data['promo_text2'] = new_text
-            save_data(bot_data)
-            send_message(peer_id, f"✅ Текст №2 обновлен:\n{new_text}")
-            return 'ok'
-        
-        # Команда .чаты
+        # Команда .чаты (показать список чатов)
         if user_id == ADMIN_ID and peer_id == user_id and text == '.чаты':
-            if bot_data['chats']:
-                chats_list = "\n".join([f"- {c}" for c in bot_data['chats']])
-                send_message(peer_id, f"📋 Чаты:\n{chats_list}\nВсего: {len(bot_data['chats'])}")
+            if bot_data.get('chats') and len(bot_data['chats']) > 0:
+                chats_list = "\n".join([f"- {chat_id}" for chat_id in bot_data['chats']])
+                send_message(peer_id, f"📋 Список чатов в рассылке:\n{chats_list}\n\nВсего: {len(bot_data['chats'])}")
             else:
-                send_message(peer_id, "📭 Чатов нет")
+                send_message(peer_id, "📭 Список чатов пуст.\n\nДобавьте бота в беседу, и он автоматически добавится в рассылку.")
             return 'ok'
         
-        # Команда .удалить
+        # Команда .удалить (удалить чат из рассылки)
         if user_id == ADMIN_ID and peer_id == user_id and text.startswith('.удалить '):
             try:
                 chat_id = int(text[9:])
                 if chat_id in bot_data['chats']:
                     bot_data['chats'].remove(chat_id)
                     save_data(bot_data)
-                    send_message(peer_id, f"✅ Чат {chat_id} удален")
+                    send_message(peer_id, f"✅ Чат {chat_id} удален из рассылки.")
                 else:
-                    send_message(peer_id, f"❌ Чат {chat_id} не найден")
-            except:
-                send_message(peer_id, "❌ Укажите ID")
+                    send_message(peer_id, f"❌ Чат {chat_id} не найден в списке.")
+            except ValueError:
+                send_message(peer_id, "❌ Укажите корректный ID чата.\n\nПример: .удалить 2000000001")
             return 'ok'
         
-        # Добавление чата при приглашении бота
+        # Добавление чата, когда бота пригласили в беседу
         if 'action' in msg and msg['action'].get('type') == 'chat_invite_user':
             invited_id = msg['action'].get('member_id')
             if invited_id == -GROUP_ID:
                 if peer_id not in bot_data['chats']:
                     bot_data['chats'].append(peer_id)
                     save_data(bot_data)
-                    send_message(peer_id, "✅ Чат добавлен в рассылку!\nСообщения будут приходить каждые 3 минуты (2 сообщения)")
+                    send_message(peer_id, "✅ Чат добавлен в рассылку!\n\nБот будет отправлять сообщения каждые 3 минуты.")
+                    print(f"➕ Чат {peer_id} добавлен в рассылку")
+                else:
+                    send_message(peer_id, "ℹ️ Этот чат уже в рассылке.")
             return 'ok'
     
     return 'ok'
